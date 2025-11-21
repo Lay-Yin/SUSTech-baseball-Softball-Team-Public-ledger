@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>球队账本公开数据</title>
+  <!-- 引入 Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 引入 Font Awesome 图标 -->
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  
+  <!-- Tailwind 配置 -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#165DFF',
+            secondary: '#36CFC9',
+            accent: '#FF7D00',
+            neutral: '#86909C',
+            light: '#F2F3F5',
+            dark: '#1D2129',
+          },
+          fontFamily: {
+            inter: ['Inter', 'system-ui', 'sans-serif'],
+          },
+        },
+      }
+    }
+  </script>
+  
+  <!-- 自定义工具类 -->
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .content-auto {
+        content-visibility: auto;
+      }
+      .table-shadow {
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+      }
+      .btn-hover {
+        transition: all 0.3s ease;
+      }
+      .btn-hover:hover {
+        transform: translateY(-2px);
+      }
+    }
+  </style>
+</head>
+<body class="font-inter bg-gray-50 text-dark">
+  <!-- 导航栏 -->
+  <header class="bg-white shadow-sm sticky top-0 z-50">
+    <div class="container mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center">
+      <div class="flex items-center mb-4 md:mb-0">
+        <i class="fa fa-book text-primary text-2xl mr-3"></i>
+        <h1 class="text-xl md:text-2xl font-bold">球队账本公开数据</h1>
+      </div>
+      <div class="flex items-center space-x-2">
+        <span class="text-sm text-neutral">
+          <i class="fa fa-refresh mr-1"></i>
+          <span id="last-update">加载中...</span>
+        </span>
+        <a href="https://github.com/Lay-Yin/SUSTech-baseball-Softball-Team-Public-ledger" 
+           target="_blank" 
+           class="bg-gray-100 hover:bg-gray-200 text-dark px-3 py-1 rounded-md text-sm flex items-center btn-hover">
+          <i class="fa fa-github mr-2"></i> GitHub
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主要内容区 -->
+  <main class="container mx-auto px-4 py-8">
+    <!-- 统计卡片 -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-neutral text-sm mb-1">总订单数</p>
+            <h3 class="text-2xl font-bold" id="total-orders">-</h3>
+          </div>
+          <div class="bg-primary/10 p-3 rounded-lg">
+            <i class="fa fa-list-alt text-primary text-xl"></i>
+          </div>
+        </div>
+      </div>
+      
+      <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-neutral text-sm mb-1">总消费金额</p>
+            <h3 class="text-2xl font-bold" id="total-amount">-</h3>
+          </div>
+          <div class="bg-accent/10 p-3 rounded-lg">
+            <i class="fa fa-rmb text-accent text-xl"></i>
+          </div>
+        </div>
+      </div>
+      
+      <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-neutral text-sm mb-1">平均消费</p>
+            <h3 class="text-2xl font-bold" id="avg-amount">-</h3>
+          </div>
+          <div class="bg-secondary/10 p-3 rounded-lg">
+            <i class="fa fa-calculator text-secondary text-xl"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 筛选和搜索区 -->
+    <div class="bg-white rounded-xl p-6 shadow-sm mb-8">
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
+        <h2 class="text-lg font-semibold mb-4 md:mb-0">订单记录</h2>
+        <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3">
+          <div class="relative">
+            <input type="text" id="search-input" 
+                   placeholder="搜索商家或货品..." 
+                   class="pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 w-full sm:w-64">
+            <i class="fa fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-neutral"></i>
+          </div>
+          
+          <select id="merchant-filter" class="border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary/50 w-full sm:w-48">
+            <option value="">所有商家</option>
+            <!-- 动态填充商家选项 -->
+          </select>
+        </div>
+      </div>
+      
+      <div class="flex flex-wrap items-center justify-between text-sm text-neutral">
+        <div class="flex items-center mb-2 sm:mb-0">
+          <span class="mr-2">排序方式:</span>
+          <select id="sort-select" class="border border-gray-200 rounded px-3 py-1 focus:outline-none focus:ring-1 focus:ring-primary">
+            <option value="date-desc">最新时间</option>
+            <option value="date-asc">最早时间</option>
+            <option value="amount-desc">金额从高到低</option>
+            <option value="amount-asc">金额从低到高</option>
+          </select>
+        </div>
+        
+        <div class="flex items-center">
+          <span class="mr-2">显示:</span>
+          <select id="page-size" class="border border-gray-200 rounded px-3 py-1 focus:outline-none focus:ring-1 focus:ring-primary">
+            <option value="10">10条/页</option>
+            <option value="20">20条/页</option>
+            <option value="50">50条/页</option>
+            <option value="all">全部</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 表格区域 -->
+    <div class="overflow-x-auto table-shadow rounded-xl">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+          <tr>
+            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-neutral uppercase tracking-wider">
+              记录时间
+            </th>
+            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-neutral uppercase tracking-wider">
+              商家
+            </th>
+            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-neutral uppercase tracking-wider">
+              货品
+            </th>
+            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-neutral uppercase tracking-wider">
+              金额
+            </th>
+          </tr>
+        </thead>
+        <tbody id="table-body" class="bg-white divide-y divide-gray-200">
+          <!-- 表格数据将通过 JavaScript 动态填充 -->
+          <tr class="animate-pulse">
+            <td colspan="4" class="px-6 py-12 text-center text-neutral">
+              <i class="fa fa-spinner fa-spin mr-2"></i> 正在加载数据...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- 分页控件 -->
+    <div id="pagination" class="flex justify-between items-center mt-4 text-sm">
+      <div class="text-neutral">
+        显示 <span id="start-range">0</span>-<span id="end-range">0</span> 条，共 <span id="total-count">0</span> 条
+      </div>
+      <div class="flex space-x-1">
+        <button id="prev-page" class="px-3 py-1 rounded border border-gray-200 text-neutral hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+          <i class="fa fa-chevron-left"></i>
+        </button>
+        <div id="page-numbers" class="flex space-x-1">
+          <!-- 分页号码将动态生成 -->
+        </div>
+        <button id="next-page" class="px-3 py-1 rounded border border-gray-200 text-neutral hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+          <i class="fa fa-chevron-right"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</main>
+
+  <!-- 页脚 -->
+  <footer class="bg-white border-t border-gray-200 py-6">
+    <div class="container mx-auto px-4 text-center text-neutral text-sm">
+      <p>© 2025 球队账本公开数据 | 数据每5分钟自动更新</p>
+      <p class="mt-2">
+        <a href="https://github.com/Lay-Yin/SUSTech-baseball-Softball-Team-Public-ledger" 
+           target="_blank" 
+           class="text-primary hover:underline">
+          <i class="fa fa-github mr-1"></i> 查看源代码
+        </a>
+      </p>
+    </div>
+  </footer>
+
+  <!-- JavaScript 代码 -->
+  <script>
+    // 配置
+    const CONFIG = {
+      csvUrl: 'https://raw.githubusercontent.com/Lay-Yin/SUSTech-baseball-Softball-Team-Public-ledger/main/public-ledger.csv',
+      refreshInterval: 300000, // 5分钟自动刷新
+    };
+    
+    // 全局状态
+    let appState = {
+      originalData: [],
+      filteredData: [],
+      currentPage: 1,
+      pageSize: 10,
+      sortBy: 'date-desc',
+      searchTerm: '',
+      merchantFilter: '',
+    };
+    
+    // 格式化金额
+    function formatAmount(amount) {
+      if (!amount) return '¥0.00';
+      // 移除可能的¥符号并转换为数字
+      const num = parseFloat(amount.toString().replace(/[^\d.]/g, ''));
+      return isNaN(num) ? amount : `¥${num.toFixed(2)}`;
+    }
+    
+    // 解析CSV数据
+    function parseCsv(csvText) {
+      const lines = csvText.trim().split('\n');
+      const headers = lines[0].split(',').map(h => h.trim());
+      const data = [];
+      
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        // 处理包含逗号的字段（简单处理，假设字段用引号包裹）
+        const values = line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(v => v.trim().replace(/^"/, '').replace(/"$/, ''));
+        const row = {};
+        
+        headers.forEach((header, index) => {
+          row[header] = values[index] || '';
+        });
+        
+        // 标准化字段名
+        if (row['记录时间']) row.date = new Date(row['记录时间']);
+        if (row['商家']) row.merchant = row['商家'];
+        if (row['货品']) row.item = row['货品'];
+        if (row['金额']) row.amount = row['金额'];
+        
+        data.push(row);
+      }
+      
+      return data;
+    }
+    
+    // 计算统计数据
+    function calculateStats(data) {
+      const totalOrders = data.length;
+      let totalAmount = 0;
+      
+      data.forEach(item => {
+        const amount = parseFloat(item.amount.toString().replace(/[^\d.]/g, ''));
+        if (!isNaN(amount)) {
+          totalAmount += amount;
+        }
+      });
+      
+      const avgAmount = totalOrders > 0 ? totalAmount / totalOrders : 0;
+      
+      return {
+        totalOrders,
+        totalAmount,
+        avgAmount,
+      };
+    }
+    
+    // 更新统计卡片
+    function updateStats(stats) {
+      document.getElementById('total-orders').textContent = stats.totalOrders.toLocaleString();
+      document.getElementById('total-amount').textContent = `¥${stats.totalAmount.toFixed(2)}`;
+      document.getElementById('avg-amount').textContent = `¥${stats.avgAmount.toFixed(2)}`;
+    }
+    
+    // 填充商家筛选下拉框
+    function populateMerchantFilter(data) {
+      const merchantFilter = document.getElementById('merchant-filter');
+      const merchants = [...new Set(data.map(item => item.merchant).filter(Boolean))];
+      
+      // 保存当前选中值
+      const currentValue = merchantFilter.value;
+      
+      // 清空现有选项（保留第一个"所有商家"）
+      while (merchantFilter.options.length > 1) {
+        merchantFilter.remove(1);
+      }
+      
+      // 添加商家选项
+      merchants.sort().forEach(merchant => {
+        const option = document.createElement('option');
+        option.value = merchant;
+        option.textContent = merchant;
+        merchantFilter.appendChild(option);
+      });
+      
+      // 恢复选中值
+      if (currentValue) {
+        merchantFilter.value = currentValue;
+      }
+    }
+    
+    // 过滤数据
+    function filterData() {
+      let filtered = [...appState.originalData];
+      
+      // 应用搜索过滤
+      if (appState.searchTerm) {
+        const searchLower = appState.searchTerm.toLowerCase();
+        filtered = filtered.filter(item => 
+          item.merchant.toLowerCase().includes(searchLower) || 
+          item.item.toLowerCase().includes(searchLower)
+        );
+      }
+      
+      // 应用商家过滤
+      if (appState.merchantFilter) {
+        filtered = filtered.filter(item => 
+          item.merchant === appState.merchantFilter
+        );
+      }
+      
+      // 应用排序
+      filtered = sortData(filtered, appState.sortBy);
+      
+      appState.filteredData = filtered;
+      return filtered;
+    }
+    
+    // 排序数据
+    function sortData(data, sortBy) {
+      const sorted = [...data];
+      
+      switch (sortBy) {
+        case 'date-asc':
+          sorted.sort((a, b) => a.date - b.date);
+          break;
+        case 'date-desc':
+          sorted.sort((a, b) => b.date - a.date);
+          break;
+        case 'amount-asc':
+          sorted.sort((a, b) => {
+            const aVal = parseFloat(a.amount.toString().replace(/[^\d.]/g, '')) || 0;
+            const bVal = parseFloat(b.amount.toString().replace(/[^\d.]/g, '')) || 0;
+            return aVal - bVal;
+          });
+          break;
+        case 'amount-desc':
+          sorted.sort((a, b) => {
+            const aVal = parseFloat(a.amount.toString().replace(/[^\d.]/g, '')) || 0;
+            const bVal = parseFloat(b.amount.toString().replace(/[^\d.]/g, '')) || 0;
+            return bVal - aVal;
+          });
+          break;
+      }
+      
+      return sorted;
+    }
+    
+    // 渲染表格数据
+    function renderTable() {
+      const tableBody = document.getElementById('table-body');
+      const filteredData = appState.filteredData;
+      const pageSize = appState.pageSize === 'all' ? filteredData.length : parseInt(appState.pageSize);
+      const totalPages = Math.ceil(filteredData.length / pageSize);
+      const startIndex = (appState.currentPage - 1) * pageSize;
+      const endIndex = Math.min(startIndex + pageSize, filteredData.length);
+      const currentPageData = filteredData.slice(startIndex, endIndex);
+      
+      // 更新分页信息
+      document.getElementById('start-range').textContent = filteredData.length > 0 ? startIndex + 1 : 0;
+      document.getElementById('end-range').textContent = endIndex;
+      document.getElementById('total-count').textContent = filteredData.length.toLocaleString();
+      
+      // 渲染表格行
+      if (currentPageData.length === 0) {
+        tableBody.innerHTML = `
+          <tr>
+            <td colspan="4" class="px-6 py-12 text-center text-neutral">
+              <i class="fa fa-search-minus mr-2"></i> 没有找到匹配的订单记录
+            </td>
+          </tr>
+        `;
+      } else {
+        tableBody.innerHTML = currentPageData.map((item, index) => `
+          <tr class="hover:bg-gray-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}">
+            <td class="px-6 py-4 whitespace-nowrap text-sm">
+              ${item.date ? new Date(item.date).toLocaleString() : ''}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+              ${item.merchant || ''}
+            </td>
+            <td class="px-6 py-4 text-sm">
+              ${item.item || ''}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium ${
+              parseFloat(item.amount.toString().replace(/[^\d.]/g, '')) > 100 ? 'text-accent' : 'text-primary'
+            }">
+              ${formatAmount(item.amount)}
+            </td>
+          </tr>
+        `).join('');
+      }
+      
+      // 更新分页控件
+      renderPagination(totalPages);
+    }
+    
+    // 渲染分页控件
+    function renderPagination(totalPages) {
+      const pageNumbers = document.getElementById('page-numbers');
+      const prevPage = document.getElementById('prev-page');
+      const nextPage = document.getElementById('next-page');
+      
+      // 禁用/启用上一页/下一页按钮
+      prevPage.disabled = appState.currentPage <= 1;
+      nextPage.disabled = appState.currentPage >= totalPages;
+      
+      // 清空现有页码
+      pageNumbers.innerHTML = '';
+      
+      // 如果总页数小于等于1，隐藏分页
+      if (totalPages <= 1) {
+        document.getElementById('pagination').classList.add('hidden');
+        return;
+      }
+      
+      document.getElementById('pagination').classList.remove('hidden');
+      
+      // 计算要显示的页码范围
+      let startPage = Math.max(1, appState.currentPage - 2);
+      let endPage = Math.min(totalPages, appState.currentPage + 2);
+      
+      // 确保至少显示5个页码（除非总页数少于5）
+      if (endPage - startPage < 4) {
+        if (startPage === 1) {
+          endPage = Math.min(5, totalPages);
+        } else if (endPage === totalPages) {
+          startPage = Math.max(1, totalPages - 4);
+        }
+      }
+      
+      // 添加页码
+      for (let i = startPage; i <= endPage; i++) {
+        const pageButton = document.createElement('button');
+        pageButton.className = `px-3 py-1 rounded border ${
+          i === appState.currentPage 
+            ? 'border-primary bg-primary text-white' 
+            : 'border-gray-200 text-neutral hover:bg-gray-50'
+        }`;
+        pageButton.textContent = i;
+        pageButton.addEventListener('click', () => {
+          appState.currentPage = i;
+          renderTable();
+        });
+        pageNumbers.appendChild(pageButton);
+      }
+    }
+    
+    // 初始化应用
+    async function initApp() {
+      try {
+        // 获取CSV数据
+        const response = await fetch(CONFIG.csvUrl);
+        if (!response.ok) throw new Error('网络错误');
+        
+        const csvText = await response.text();
+        const data = parseCsv(csvText);
+        
+        // 更新应用状态
+        appState.originalData = data;
+        
+        // 计算并更新统计数据
+        const stats = calculateStats(data);
+        updateStats(stats);
+        
+        // 填充商家筛选器
+        populateMerchantFilter(data);
+        
+        // 过滤并渲染数据
+        filterData();
+        renderTable();
+        
+        // 更新最后更新时间
+        document.getElementById('last-update').textContent = new Date().toLocaleString();
+        
+      } catch (error) {
+        console.error('初始化失败:', error);
+        document.getElementById('table-body').innerHTML = `
+          <tr>
+            <td colspan="4" class="px-6 py-12 text-center text-red-500">
+              <i class="fa fa-exclamation-circle mr-2"></i> 数据加载失败，请稍后重试
+            </td>
+          </tr>
+        `;
+      }
+    }
+    
+    // 绑定事件监听器
+    function bindEvents() {
+      // 搜索输入事件
+      document.getElementById('search-input').addEventListener('input', (e) => {
+        appState.searchTerm = e.target.value.trim();
+        appState.currentPage = 1; // 重置页码
+        filterData();
+        renderTable();
+      });
+      
+      // 商家筛选事件
+      document.getElementById('merchant-filter').addEventListener('change', (e) => {
+        appState.merchantFilter = e.target.value;
+        appState.currentPage = 1; // 重置页码
+        filterData();
+        renderTable();
+      });
+      
+      // 排序选择事件
+      document.getElementById('sort-select').addEventListener('change', (e) => {
+        appState.sortBy = e.target.value;
+        filterData();
+        renderTable();
+      });
+      
+      // 每页显示数量事件
+      document.getElementById('page-size').addEventListener('change', (e) => {
+        appState.pageSize = e.target.value;
+        appState.currentPage = 1; // 重置页码
+        filterData();
+        renderTable();
+      });
+      
+      // 分页按钮事件
+      document.getElementById('prev-page').addEventListener('click', () => {
+        if (appState.currentPage > 1) {
+          appState.currentPage--;
+          renderTable();
+        }
+      });
+      
+      document.getElementById('next-page').addEventListener('click', () => {
+        const totalPages = Math.ceil(appState.filteredData.length / (appState.pageSize === 'all' ? appState.filteredData.length : parseInt(appState.pageSize)));
+        if (appState.currentPage < totalPages) {
+          appState.currentPage++;
+          renderTable();
+        }
+      });
+    }
+    
+    // 初始化应用
+    document.addEventListener('DOMContentLoaded', () => {
+      initApp();
+      bindEvents();
+      
+      // 设置自动刷新
+      setInterval(initApp, CONFIG.refreshInterval);
+    });
+  </script>
+</body>
+</html>
