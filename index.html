@@ -256,35 +256,35 @@
     }
     
     // 解析CSV数据
-    function parseCsv(csvText) {
-      const lines = csvText.trim().split('\n');
-      const headers = lines[0].split(',').map(h => h.trim());
-      const data = [];
-      
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        
-        // 处理包含逗号的字段（简单处理，假设字段用引号包裹）
-        const values = line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(v => v.trim().replace(/^"/, '').replace(/"$/, ''));
-        const row = {};
-        
-        headers.forEach((header, index) => {
-          row[header] = values[index] || '';
-        });
-        
-        // 标准化字段名
-        if (row['记录时间']) row.date = new Date(row['记录时间']);
-        if (row['商家']) row.merchant = row['商家'];
-        if (row['货品']) row.item = row['货品'];
-        if (row['金额']) row.amount = row['金额'];
-        
-        data.push(row);
-      }
-      
-      return data;
-    }
+function parseCsv(csvText) {
+  const lines = csvText.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.trim());
+  const data = [];
+  
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
     
+    // 处理包含逗号的字段（简单处理，假设字段用引号包裹）
+    const values = line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(v => v.trim().replace(/^"/, '').replace(/"$/, ''));
+    const row = {};
+    
+    headers.forEach((header, index) => {
+      row[header] = values[index] || '';
+    });
+    
+    // 标准化字段名
+    if (row['记录时间']) row.date = new Date(row['记录时间']);
+    if (row['商家']) row.merchant = row['商家'];
+    if (row['货品']) row.item = row['货品'];
+    if (row['金额']) row.amount = row['金额'];
+    
+    data.push(row);
+  }
+  
+  return data;
+}
+
     // 计算统计数据
     function calculateStats(data) {
       const totalOrders = data.length;
