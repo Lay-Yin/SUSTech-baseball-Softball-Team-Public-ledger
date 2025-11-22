@@ -4,12 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>球队账本公开数据</title>
-  <!-- 引入 Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- 引入 Font Awesome 图标 -->
   <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
   
-  <!-- Tailwind 配置 -->
   <script>
     tailwind.config = {
       theme: {
@@ -30,7 +27,6 @@
     }
   </script>
   
-  <!-- 自定义工具类 -->
   <style type="text/tailwindcss">
     @layer utilities {
       .content-auto {
@@ -72,8 +68,8 @@
 
   <!-- 主要内容区 -->
   <main class="container mx-auto px-4 py-8">
-    <!-- 统计卡片 -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+    <!-- 统计卡片（删除平均消费卡片） -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
       <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
         <div class="flex items-center justify-between">
           <div>
@@ -94,18 +90,6 @@
           </div>
           <div class="bg-accent/10 p-3 rounded-lg">
             <i class="fa fa-rmb text-accent text-xl"></i>
-          </div>
-        </div>
-      </div>
-      
-      <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-neutral text-sm mb-1">平均消费</p>
-            <h3 class="text-2xl font-bold" id="avg-amount">-</h3>
-          </div>
-          <div class="bg-secondary/10 p-3 rounded-lg">
-            <i class="fa fa-calculator text-secondary text-xl"></i>
           </div>
         </div>
       </div>
@@ -173,21 +157,10 @@
           </tr>
         </thead>
         <tbody id="table-body" class="bg-white divide-y divide-gray-200">
-          <!-- 动态渲染行 -->
-          <tr class="hover:bg-gray-50 transition-colors">
-            <td class="px-6 py-4 whitespace-nowrap text-sm">
-              ${item.date ? new Date(item.date).toLocaleString() : ''}
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-              ${item.merchant || '未识别'}
-            </td>
-            <td class="px-6 py-4 text-sm">
-              ${item.item || '未识别'}
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium ${
-              parseFloat(item.amount.toString().replace(/[^\d.]/g, '')) > 100 ? 'text-accent' : 'text-primary'
-            }">
-              ${formatAmount(item.amount)}
+          <!-- 表格数据将通过 JavaScript 动态填充 -->
+          <tr class="animate-pulse">
+            <td colspan="4" class="px-6 py-12 text-center text-neutral">
+              <i class="fa fa-spinner fa-spin mr-2"></i> 正在加载数据...
             </td>
           </tr>
         </tbody>
@@ -211,8 +184,7 @@
         </button>
       </div>
     </div>
-  </div>
-</main>
+  </main>
 
   <!-- 页脚 -->
   <footer class="bg-white border-t border-gray-200 py-6">
@@ -255,37 +227,40 @@
       return isNaN(num) ? amount : `¥${num.toFixed(2)}`;
     }
     
-    // 解析CSV数据
-function parseCsv(csvText) {
-  const lines = csvText.trim().split('\n');
-  const headers = lines[0].split(',').map(h => h.trim());
-  const data = [];
-  
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
+    // 解析CSV数据（保持之前的修复逻辑）
+    function parseCsv(csvText) {
+      const lines = csvText.trim().split('\n');
+      const data = [];
+      
+      // 从第二行开始处理数据（跳过表头）
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        // 简单按逗号分割（假设CSV中没有包含逗号的字段）
+        const values = line.split(',').map(v => v.trim());
+        
+        // 构造行对象，只提取我们需要的四列
+        const row = {
+          '记录时间': values[0] || '',
+          '商家': values[1] || '',
+          '货品': values[2] || '',
+          '金额': values[3] || ''
+        };
+        
+        // 标准化字段名，用于前端渲染
+        row.date = row['记录时间'] ? new Date(row['记录时间']) : null;
+        row.merchant = row['商家'];
+        row.item = row['货品'];
+        row.amount = row['金额'];
+        
+        data.push(row);
+      }
+      
+      return data;
+    }
     
-    // 处理包含逗号的字段（简单处理，假设字段用引号包裹）
-    const values = line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(v => v.trim().replace(/^"/, '').replace(/"$/, ''));
-    const row = {};
-    
-    headers.forEach((header, index) => {
-      row[header] = values[index] || '';
-    });
-    
-    // 标准化字段名
-    if (row['记录时间']) row.date = new Date(row['记录时间']);
-    if (row['商家']) row.merchant = row['商家'];
-    if (row['货品']) row.item = row['货品'];
-    if (row['金额']) row.amount = row['金额'];
-    
-    data.push(row);
-  }
-  
-  return data;
-}
-
-    // 计算统计数据
+    // 计算统计数据（删除平均消费计算）
     function calculateStats(data) {
       const totalOrders = data.length;
       let totalAmount = 0;
@@ -297,20 +272,16 @@ function parseCsv(csvText) {
         }
       });
       
-      const avgAmount = totalOrders > 0 ? totalAmount / totalOrders : 0;
-      
       return {
         totalOrders,
-        totalAmount,
-        avgAmount,
+        totalAmount
       };
     }
     
-    // 更新统计卡片
+    // 更新统计卡片（删除平均消费更新）
     function updateStats(stats) {
       document.getElementById('total-orders').textContent = stats.totalOrders.toLocaleString();
       document.getElementById('total-amount').textContent = `¥${stats.totalAmount.toFixed(2)}`;
-      document.getElementById('avg-amount').textContent = `¥${stats.avgAmount.toFixed(2)}`;
     }
     
     // 填充商家筛选下拉框
