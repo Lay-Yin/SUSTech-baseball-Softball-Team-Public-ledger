@@ -1,5 +1,4 @@
-
-  /* 2026-10-04 */
+/* 2026-10-04 */
 /* BiliBili Cloudflare 网关代理脚本 - Egern 适配版 */
 
 'use strict';
@@ -7,10 +6,10 @@
 /* ============================================================
  * 常量 / 配置
  * ============================================================ */
-const CONFIG = {
+const CONFIG = Object.freeze({
   name: 'BiliBili',
-  gateway: '', // 从 ctx.env 读取，见 parseScriptArgument()
-};
+  gateway: 'https://bl-premium-proxy.iwanderskye.workers.dev/v1/playviewunite',
+});
 
 const BILI_UA_REGEX = /(?:^|\s)bili-universal\//i;
 const NOT_SUPPORTED_MSG = '脚本仅支持国内粉色哔哩哔哩';
@@ -21,13 +20,6 @@ const SUPPORTED_ENDPOINTS = new Set([
   'app.bilibili.com/bilibili.app.playerunite.v1.Player/PlayViewUnite',
   'app.bilibili.com/bilibili.app.playurl.v1.PlayURL/PlayView',
 ]);
-
-const HTTP_STATUS_TEXT = {
-  200: 'OK', 400: 'Bad Request', 401: 'Unauthorized', 403: 'Forbidden',
-  404: 'Not Found', 408: 'Request Timeout', 429: 'Too Many Requests',
-  500: 'Internal Server Error', 502: 'Bad Gateway',
-  503: 'Service Unavailable', 504: 'Gateway Timeout',
-};
 
 const BASE64_TABLE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
@@ -47,7 +39,6 @@ function safeStringify(value, fallback = '') {
   try { return JSON.stringify(value); } catch { return fallback; }
 }
 
-/* 解析 query string → 普通对象 */
 function parseQuery(input) {
   if (isPlainObject(input)) return { ...input };
   if (typeof input !== 'string' || !input.trim()) return {};
@@ -74,7 +65,6 @@ function parseStatusCode(value, fallback = 0) {
 
 /* 从 Headers 对象或普通对象中取 header */
 function getHeader(headers, name) {
-  // Egern 的 Headers 对象
   if (headers && typeof headers.get === 'function') {
     return headers.get(name) || '';
   }
@@ -167,17 +157,10 @@ function bytesToText(bytes) {
   try { return decodeURIComponent(encoded); } catch { return ''; }
 }
 
-function extractBodyText(res) {
-  if (typeof res?.body === 'string') return res.body.replace(/^\uFEFF/, '');
-  const bytes = toUint8Array(res?.bodyBytes) || toUint8Array(res?.body);
-  return bytes ? bytesToText(bytes).replace(/^\uFEFF/, '') : '';
-}
-
 /* ============================================================
- * Egern 请求信息读取
+ * Egern 请求体读取
  * ============================================================ */
 async function readEgernRequestBody(ctx) {
-  // Egern: ctx.request.body 是 ReadableStream，用 arrayBuffer() 读取
   if (!ctx?.request) return null;
   try {
     const buf = await ctx.request.arrayBuffer();
@@ -187,37 +170,27 @@ async function readEgernRequestBody(ctx) {
   }
 }
 
-function buildEgernHeaders(headers) {
-  // Egern Headers → 普通对象
-  const out = {};
-  if (!headers) return out;
-  if (typeof headers.forEach === 'function') {
-    headers.forEach((value, key) => { out[key] = value; });
-  } else {
-    for (const [k, v] of Object.entries(headers)) out[k] = v;
-  }
-  return out;
-}
-
 /* ============================================================
- * 脚本参数解析（从 ctx.env 读取）
+ * 脚本参数解析（仅 policy / bl_timeout 从 ctx.env 读取）
  * ============================================================ */
 function parseScriptArgument(ctx) {
   const env = ctx?.env ?? {};
-  const policy = String(env.gateway || '').trim() || 'force-cache';
-  const rawTimeout = Number(env.bl_timeout || 15000);
+  const raw = parseQuery(env);
+
+  const policy = String(raw.policy || '').trim() || 'force-cache';
+  const rawTimeout = Number(raw.bl_timeout || 15000);
   const timeout = Number.isFinite(rawTimeout)
     ? Math.min(60000, Math.max(3000, Math.trunc(rawTimeout)))
     : 15000;
-  const gateway = String(env.gateway_url || '').trim();
-  return { policy, timeout, gateway };
+
+  return { policy, timeout };
 }
 
 /* ============================================================
- * CF 网关调用（使用 ctx.http）
+ * CF 网关调用
  * ============================================================ */
 async function callGateway(ctx, opts, uid, deviceBin, target, bodyBytes) {
-  const res = await ctx.http.post(opts.gateway, {
+  const res = await ctx.http.post(CONFIG.gateway, {
     headers: {
       'content-type': 'application/json; charset=utf-8',
       'x-bili-device-bin': deviceBin,
@@ -251,7 +224,6 @@ async function callGateway(ctx, opts, uid, deviceBin, target, bodyBytes) {
 
   const inner = payload.body;
 
-  // 检查上游 gRPC 错误
   const grpcStatus = getHeader(inner.headers, 'grpc-status').trim();
   if (grpcStatus && grpcStatus !== '0') {
     const grpcMessage = getHeader(inner.headers, 'grpc-message').trim() || 'Unknown';
@@ -289,7 +261,7 @@ function buildEgernResponse(result) {
   return {
     status: result.status,
     headers: result.headers,
-    body: bodyBytes || '', // Egern 直接接受 Uint8Array 作为二进制 body
+    body: bodyBytes || '',
   };
 }
 
@@ -312,37 +284,39 @@ function buildEgernError(err) {
   };
 }
 
+/* 校验 URL 是否属于受支持的接口 */
+function validateTargetUrl(url) {
+  const m = String(url ?? '').match(/^https:\/\/([^/?#]+)(\/[^?#]*)/i);
+  if (!m) throw new Error('无效的请求 URL');
+  const key = `${m[1].toLowerCase()}${m[2]}`;
+  if (!SUPPORTED_ENDPOINTS.has(key)) throw new Error('不支持的 B 站接口');
+  return key;
+}
+
 /* ============================================================
  * 主流程（Egern 入口）
  * ============================================================ */
 export default async function(ctx) {
-  const envName = ctx?.app?.version ? 'Egern' : 'Unknown';
-
   try {
-    if (envName === 'Unknown') throw new Error('不支持的运行环境');
-
-    // 1. 读取请求信息
     const reqHeaders = ctx?.request?.headers;
     const reqUrl = ctx?.request?.url;
-    const reqMethod = ctx?.request?.method || 'GET';
 
-    // 2. UA 校验
+    // 1. UA 校验
     const ua = getHeader(reqHeaders, 'user-agent').trim();
     if (!BILI_UA_REGEX.test(ua)) {
       ctx?.log?.(`[BiliBili] ignored unsupported user-agent=${ua}`);
-      return { status: 200, headers: {}, body: '' }; // 放行，不修改
+      return { status: 200, headers: {}, body: '' };
     }
 
-    // 3. 解析参数 & 网关配置
+    // 2. 网关配置校验（沿用原脚本逻辑：检查硬编码常量）
+    if (!/^https:\/\//i.test(CONFIG.gateway) || CONFIG.gateway.includes('REPLACE_WITH_')) {
+      throw new Error('请先在脚本源码中配置有效的 CF 网关地址');
+    }
+
+    // 3. 参数解析
     const opts = parseScriptArgument(ctx);
-    if (!opts.gateway) {
-      throw new Error('请先在环境变量中配置 gateway_url');
-    }
-    if (!/^https:\/\//i.test(opts.gateway)) {
-      throw new Error('gateway_url 必须以 https:// 开头');
-    }
 
-    // 4. 读取请求体（二进制）
+    // 4. 读取请求体
     const bodyBytes = await readEgernRequestBody(ctx);
     if (!bodyBytes) throw new Error('无法读取请求体');
 
@@ -369,19 +343,10 @@ export default async function(ctx) {
 
     ctx?.log?.(`[BiliBili] CF 返回 status=${result.status}, bytes=${result.bodyBytes.length}`);
 
-    // 8. 返回响应（Egern 直接 return，二进制 body 放 body 字段）
+    // 8. 返回响应
     return buildEgernResponse(result);
 
   } catch (err) {
     return buildEgernError(err);
   }
-}
-
-/* 校验 URL 是否属于受支持的接口 */
-function validateTargetUrl(url) {
-  const m = String(url ?? '').match(/^https:\/\/([^/?#]+)(\/[^?#]*)/i);
-  if (!m) throw new Error('无效的请求 URL');
-  const key = `${m[1].toLowerCase()}${m[2]}`;
-  if (!SUPPORTED_ENDPOINTS.has(key)) throw new Error('不支持的 B 站接口');
-  return key;
 }
